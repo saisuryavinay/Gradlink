@@ -12,10 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Environment variables — keep .env.example, never push real .env
+# Environment variables — keep .env.example and .env.production, never push real .env
 .env
 .env.*
 !.env.example
+!.env.production
 
 # Editor directories and files
 .vscode/*

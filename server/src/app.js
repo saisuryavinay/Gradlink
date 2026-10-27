@@ -21,12 +21,17 @@ const app = express();
 app.use(helmet());
 
 // CORS
+// CLIENT_URL can be a comma-separated list of allowed origins, e.g.:
+//   CLIENT_URL=https://gradlink.vercel.app,https://gradlink-git-main-user.vercel.app
 const allowedOrigins = [
-  process.env.CLIENT_URL || 'http://localhost:5173',
   'http://localhost:5173',
+  ...(process.env.CLIENT_URL
+    ? process.env.CLIENT_URL.split(',').map((o) => o.trim()).filter(Boolean)
+    : []),
 ];
 app.use(cors({
   origin: (origin, callback) => {
+    // Allow server-to-server requests (no origin) and listed origins
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
