@@ -19,8 +19,6 @@
     "dotenv": "^16.4.5",
     "cors": "^2.8.5",
     "multer": "^1.4.5-lts.1",
-    "multer-gridfs-storage": "^5.0.2",
-    "gridfs-stream": "^1.1.1",
     "pdf-parse": "^1.1.1",
     "express-rate-limit": "^7.3.1",
     "express-validator": "^7.1.0",
