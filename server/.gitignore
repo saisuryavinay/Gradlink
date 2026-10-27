@@ -1,0 +1,15 @@
+# Server-specific ignores
+node_modules/
+.env
+.env.*
+!.env.example
+
+# Uploaded files / GridFS temp
+uploads/
+
+# Logs
+*.log
+logs/
+
+# MongoDB memory server cache
+.cache/
