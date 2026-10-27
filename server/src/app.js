@@ -21,17 +21,21 @@ const app = express();
 app.use(helmet());
 
 // CORS
-// CLIENT_URL can be a comma-separated list of allowed origins, e.g.:
-//   CLIENT_URL=https://gradlink.vercel.app,https://gradlink-git-main-user.vercel.app
+// Hardcoded production origins — safe to commit (these are public URLs, not secrets).
+// To allow additional origins without redeploying, set CLIENT_URL as a comma-separated
+// list in the Render environment variables, e.g.:
+//   CLIENT_URL=https://gradlink-three.vercel.app,https://gradlink-preview.vercel.app
 const allowedOrigins = [
   'http://localhost:5173',
+  'https://gradlink-three.vercel.app',      // production Vercel frontend
   ...(process.env.CLIENT_URL
     ? process.env.CLIENT_URL.split(',').map((o) => o.trim()).filter(Boolean)
     : []),
 ];
-app.use(cors({
+
+const corsOptions = {
   origin: (origin, callback) => {
-    // Allow server-to-server requests (no origin) and listed origins
+    // Allow server-to-server requests (no origin header) and explicitly listed origins
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -39,7 +43,14 @@ app.use(cors({
     }
   },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+// Answer OPTIONS preflight requests immediately, before any other middleware
+// (rate-limiter, helmet, routes) can intercept and drop them without CORS headers.
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 
 // Logging
 if (process.env.NODE_ENV !== 'test') {
