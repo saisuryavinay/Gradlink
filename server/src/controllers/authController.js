@@ -66,7 +66,9 @@ export const register = async (req, res, next) => {
       );
 
       try {
-        await sendVerificationOTP(normalizedEmail, existing.name, true);
+        // isResend=false: registration OTPs never consume a resend slot or set
+        // lastResendAt — only explicit /resend-otp calls count toward limits.
+        await sendVerificationOTP(normalizedEmail, existing.name, false);
       } catch (emailErr) {
         console.error(`[REGISTER] OTP email failed for existing unverified user ${normalizedEmail}: ${emailErr.message}`);
         return res.status(200).json({
@@ -137,24 +139,39 @@ export const register = async (req, res, next) => {
 };
 
 export const sendVerificationOTP = async (email, name, isResend = true) => {
-  // Check resend limits
-  const existing = await EmailVerification.findOne({ email });
-  if (isResend && existing) {
-    if (existing.resendCount >= MAX_RESENDS) {
-      throw Object.assign(new Error('Maximum resend limit reached. Please wait or contact support.'), { statusCode: 429 });
-    }
-    const cooldown = 60 * 1000; // 1 minute between resends
-    if (existing.lastResendAt && Date.now() - existing.lastResendAt.getTime() < cooldown) {
-      throw Object.assign(new Error('Please wait 1 minute before requesting another OTP.'), { statusCode: 429 });
+  // ── Rate-limit check (only for explicit resend requests) ────────────────
+  const COOLDOWN_MS = 60 * 1000; // 1 minute between resends
+
+  if (isResend) {
+    const existing = await EmailVerification.findOne({ email });
+    if (existing) {
+      if (existing.resendCount >= MAX_RESENDS) {
+        throw Object.assign(
+          new Error('Maximum resend limit reached. Please contact support.'),
+          { statusCode: 429 }
+        );
+      }
+      if (existing.lastResendAt) {
+        const elapsed = Date.now() - existing.lastResendAt.getTime();
+        if (elapsed < COOLDOWN_MS) {
+          const retryAfterSeconds = Math.ceil((COOLDOWN_MS - elapsed) / 1000);
+          throw Object.assign(
+            new Error(`Please wait ${retryAfterSeconds} second${retryAfterSeconds === 1 ? '' : 's'} before requesting another OTP.`),
+            { statusCode: 429, retryAfterSeconds }
+          );
+        }
+      }
     }
   }
 
+  // ── Generate OTP ────────────────────────────────────────────────────────
   const otp = generateOTP();
   const otpHash = EmailVerification.hashOTP(otp);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-  // Save OTP to DB first — if email fails, the record still exists
-  // and the user can retry with "Resend OTP".
+  // Save OTP to DB first (attempts reset, new hash + expiry).
+  // We do NOT update resendCount/lastResendAt yet — we only do that on
+  // confirmed delivery so a failed SMTP attempt doesn't eat a resend slot.
   await EmailVerification.findOneAndUpdate(
     { email },
     {
@@ -163,15 +180,21 @@ export const sendVerificationOTP = async (email, name, isResend = true) => {
       expiresAt,
       attempts: 0,
       verified: false,
-      $inc: { resendCount: isResend ? 1 : 0 },
-      lastResendAt: isResend ? new Date() : undefined,
     },
     { upsert: true, new: true }
   );
 
-  // Always await — a delivery failure should surface as an error to the caller,
-  // not be silently swallowed. The caller decides how to respond to the client.
+  // ── Send email (await — never fire-and-forget) ─────────────────────────
+  // Throws on SMTP failure; the caller catches and decides HTTP response.
   await sendOTPEmail(email, otp, name);
+
+  // ── Only update rate-limit tracking AFTER successful delivery ──────────
+  if (isResend) {
+    await EmailVerification.findOneAndUpdate(
+      { email },
+      { $inc: { resendCount: 1 }, lastResendAt: new Date() }
+    );
+  }
 };
 
 export const resendOTP = async (req, res, next) => {
@@ -184,7 +207,22 @@ export const resendOTP = async (req, res, next) => {
     if (!user) return res.status(404).json({ message: 'No account found with this email.' });
     if (user.isVerified) return res.status(400).json({ message: 'This account is already verified.' });
 
-    await sendVerificationOTP(normalizedEmail, user.name, true);
+    try {
+      await sendVerificationOTP(normalizedEmail, user.name, true);
+    } catch (err) {
+      // Surface 429 rate-limit errors with exact retry time to the frontend
+      if (err.statusCode === 429) {
+        return res.status(429).json({
+          message: err.message,
+          retryAfterSeconds: err.retryAfterSeconds || 60,
+        });
+      }
+      // SMTP / other failure
+      console.error(`[RESEND] Failed to send OTP to ${normalizedEmail}: ${err.message}`);
+      return res.status(500).json({
+        message: 'Failed to send OTP email. Please try again in a moment.',
+      });
+    }
 
     res.json({ message: 'A new OTP has been sent to your email.' });
   } catch (error) {
