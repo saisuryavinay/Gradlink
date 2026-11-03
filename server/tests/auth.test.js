@@ -12,12 +12,12 @@ beforeAll(async () => {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri());
   process.env.JWT_SECRET = 'test-secret-for-jest';
-});
+}, 60000);
 
 afterAll(async () => {
   await mongoose.disconnect();
   await mongod.stop();
-});
+}, 60000);
 
 beforeEach(async () => {
   await mongoose.connection.dropDatabase();

@@ -19,7 +19,9 @@ const userSchema = new mongoose.Schema(
       trim: true,
       validate: {
         validator: function (v) {
-          const domain = v.split('@')[1];
+          const role = this.role || (this.getUpdate && (this.getUpdate().role || (this.getUpdate().$set && this.getUpdate().$set.role)));
+          if (role === 'admin') return true;
+          const domain = v ? v.split('@')[1] : '';
           return ALLOWED_DOMAINS.includes(domain);
         },
         message: 'Email must be from an official college domain (@acet.ac.in, @acoe.edu.in, or @aec.edu.in)',

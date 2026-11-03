@@ -63,10 +63,10 @@ export default function LoginPage() {
         <div className="card p-8 shadow-xl">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
             <div>
-              <label htmlFor="email" className="label">College Email</label>
+              <label htmlFor="email" className="label">Email Address</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input id="email" type="email" {...register('email')} className="input pl-9" placeholder="you@acet.ac.in" autoComplete="email" />
+                <input id="email" type="email" {...register('email')} className="input pl-9" placeholder="you@acet.ac.in or admin email" autoComplete="email" />
               </div>
               {errors.email && <p className="form-error">{errors.email.message}</p>}
             </div>
@@ -98,7 +98,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-          Only official college email addresses are accepted.
+          Students and alumni must sign in with their official college email.
         </p>
       </motion.div>
     </div>

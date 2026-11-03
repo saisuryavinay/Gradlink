@@ -47,7 +47,8 @@ NODE_ENV=development
 
 ### Client — `client/.env`
 ```env
-VITE_API_URL=http://localhost:5000/api
+# Backend root URL; /api is appended automatically when needed
+VITE_API_URL=http://localhost:5000
 ```
 
 > **Gmail SMTP**: Enable 2FA and create an App Password at https://myaccount.google.com/apppasswords

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import app from './app.js';
 import { connectDB } from './config/db.js';
+import { seedAdmin } from './utils/seedAdmin.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -26,6 +27,7 @@ if (!process.env.SMTP_USER) {
 
 const startServer = async () => {
   await connectDB();
+  await seedAdmin();
 
   app.listen(PORT, () => {
     console.log(`[SERVER] GradLink API running on http://localhost:${PORT}`);

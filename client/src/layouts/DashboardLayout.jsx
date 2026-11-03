@@ -294,12 +294,14 @@ export default function DashboardLayout({ role }) {
                     <span className="badge-blue mt-1 capitalize">{user?.role}</span>
                   </div>
                   <div className="p-1">
-                    <button
-                      onClick={() => { navigate(`${basePath}/profile`); setUserMenuOpen(false); }}
-                      className="sidebar-link w-full text-left"
-                    >
-                      <User className="h-4 w-4" /> My Profile
-                    </button>
+                    {role !== 'admin' && (
+                      <button
+                        onClick={() => { navigate(`${basePath}/profile`); setUserMenuOpen(false); }}
+                        className="sidebar-link w-full text-left"
+                      >
+                        <User className="h-4 w-4" /> My Profile
+                      </button>
+                    )}
                     <button
                       onClick={() => { navigate(`${basePath}/settings`); setUserMenuOpen(false); }}
                       className="sidebar-link w-full text-left"

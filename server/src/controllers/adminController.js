@@ -4,6 +4,7 @@ import JobApplication from '../models/JobApplication.js';
 import StudentProfile from '../models/StudentProfile.js';
 import AlumniProfile from '../models/AlumniProfile.js';
 import MentorshipRequest from '../models/MentorshipRequest.js';
+import ProfessionalUpdate from '../models/ProfessionalUpdate.js';
 import { createObjectCsvStringifier } from 'csv-writer';
 import PDFDocument from 'pdfkit';
 
@@ -15,20 +16,30 @@ export const getDashboardStats = async (req, res, next) => {
     const [
       totalStudents,
       totalAlumni,
+      activeUsers,
+      deactivatedUsers,
       activeJobs,
-      pendingJobApprovals,
+      pendingJobs,
       totalApplications,
       shortlisted,
       selected,
+      pendingMentorships,
+      activeMentorships,
+      pendingProfessionalUpdates,
       upcomingDeadlines,
     ] = await Promise.all([
       User.countDocuments({ role: 'student', isActive: true }),
       User.countDocuments({ role: 'alumni', isActive: true }),
+      User.countDocuments({ isActive: true }),
+      User.countDocuments({ isActive: false }),
       Job.countDocuments({ status: 'approved', deadline: { $gte: now } }),
       Job.countDocuments({ status: 'pending' }),
       JobApplication.countDocuments(),
       JobApplication.countDocuments({ status: 'shortlisted' }),
       JobApplication.countDocuments({ status: 'selected' }),
+      MentorshipRequest.countDocuments({ status: 'pending' }),
+      MentorshipRequest.countDocuments({ status: 'accepted' }),
+      ProfessionalUpdate.countDocuments({ status: 'pending' }),
       Job.find({ status: 'approved', deadline: { $gte: now, $lte: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) } })
         .select('company title deadline')
         .sort({ deadline: 1 })
@@ -36,7 +47,22 @@ export const getDashboardStats = async (req, res, next) => {
     ]);
 
     res.json({
-      stats: { totalStudents, totalAlumni, activeJobs, pendingJobApprovals, totalApplications, shortlisted, selected },
+      stats: {
+        totalStudents,
+        totalAlumni,
+        activeUsers,
+        deactivatedUsers,
+        activeJobs,
+        pendingJobs,
+        pendingJobApprovals: pendingJobs,
+        totalApplications,
+        shortlisted,
+        selected,
+        totalPlacements: selected,
+        pendingMentorships,
+        activeMentorships,
+        pendingProfessionalUpdates,
+      },
       upcomingDeadlines,
     });
   } catch (error) {
