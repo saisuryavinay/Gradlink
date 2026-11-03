@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import EmailVerification from '../models/EmailVerification.js';
 import StudentProfile from '../models/StudentProfile.js';
 import AlumniProfile from '../models/AlumniProfile.js';
-import { sendOTPEmail } from '../config/email.js';
+import { sendOTPEmail, sendOTPEmailBackground } from '../config/email.js';
 
 const ALLOWED_DOMAINS = ['acet.ac.in', 'acoe.edu.in', 'aec.edu.in'];
 const OTP_EXPIRY_MINUTES = 5;
@@ -64,7 +64,9 @@ export const register = async (req, res, next) => {
         { email: normalizedEmail },
         { $set: { resendCount: 0 } }
       );
-      await sendVerificationOTP(normalizedEmail, existing.name, true);
+      // background=true: save OTP to DB first, then fire email async so we
+      // respond immediately and avoid Render cold-start + SMTP timeouts.
+      await sendVerificationOTP(normalizedEmail, existing.name, true, true);
       return res.status(200).json({
         message: 'An unverified account already exists for this email. A new OTP has been sent. Please verify your email to continue.',
         email: normalizedEmail,
@@ -100,8 +102,10 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Generate and send OTP
-    await sendVerificationOTP(normalizedEmail, name.trim(), false);
+    // Generate OTP and save to DB synchronously, then send email in background.
+    // This ensures the HTTP response is returned before SMTP delivery completes,
+    // preventing Render cold-start + SMTP latency from triggering a 30s timeout.
+    await sendVerificationOTP(normalizedEmail, name.trim(), false, true);
 
     res.status(201).json({
       message: 'Account created. Please check your email for a verification OTP.',
@@ -113,7 +117,7 @@ export const register = async (req, res, next) => {
   }
 };
 
-export const sendVerificationOTP = async (email, name, isResend = true) => {
+export const sendVerificationOTP = async (email, name, isResend = true, background = false) => {
   // Check resend limits
   const existing = await EmailVerification.findOne({ email });
   if (isResend && existing) {
@@ -144,7 +148,13 @@ export const sendVerificationOTP = async (email, name, isResend = true) => {
     { upsert: true, new: true }
   );
 
-  await sendOTPEmail(email, otp, name);
+  if (background) {
+    // Fire-and-forget: respond to the client immediately, deliver email async.
+    // If email fails, the OTP is still in DB and user can resend from OTP page.
+    sendOTPEmailBackground(email, otp, name);
+  } else {
+    await sendOTPEmail(email, otp, name);
+  }
 };
 
 export const resendOTP = async (req, res, next) => {

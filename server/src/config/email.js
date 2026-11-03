@@ -16,6 +16,10 @@ export const getEmailTransporter = () => {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
+      // Prevent SMTP from hanging indefinitely — critical on cloud hosts
+      connectionTimeout: 10000,   // 10 s to establish TCP connection
+      greetingTimeout: 10000,     // 10 s to receive SMTP greeting
+      socketTimeout: 20000,       // 20 s of socket inactivity before abort
     });
   }
 
@@ -46,5 +50,18 @@ export const sendOTPEmail = async (to, otp, name) => {
         <p style="font-size: 12px; color: #6B7280;">GradLink — Alumni Networking &amp; Student Career Platform</p>
       </div>
     `,
+  });
+};
+
+/**
+ * Fire-and-forget email sender.
+ * Sends the OTP email in the background without blocking the HTTP response.
+ * Logs any delivery failures server-side without crashing the request.
+ */
+export const sendOTPEmailBackground = (to, otp, name) => {
+  sendOTPEmail(to, otp, name).catch((err) => {
+    // Log the failure but do NOT crash — the OTP is already saved in DB.
+    // The user can request a resend from the OTP page.
+    console.error(`[EMAIL] Failed to send OTP to ${to}: ${err.message}`);
   });
 };

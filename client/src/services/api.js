@@ -44,12 +44,27 @@ api.interceptors.response.use(
 
 // Helper to extract error message
 export const getErrorMessage = (error) => {
+  if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+    return 'The server is taking too long to respond. This can happen when the server is starting up. Please wait a moment and try again.';
+  }
   return error?.response?.data?.message || error?.message || 'An unexpected error occurred.';
+};
+
+/**
+ * Pings the backend health endpoint to pre-warm a cold Render instance.
+ * Silently ignores failures — this is best-effort only.
+ */
+export const pingBackend = () => {
+  api.get('/health', { timeout: 15000 }).catch(() => {});
 };
 
 // --- Auth API ---
 export const authApi = {
-  register: (data) => api.post('/auth/register', data),
+  // Registration uses a longer timeout (60 s) because:
+  // 1. Render free tier can take 10–30 s to cold-start.
+  // 2. MongoDB connection is established on first request.
+  // The email is now sent in the background so SMTP latency no longer adds to this.
+  register: (data) => api.post('/auth/register', data, { timeout: 60000 }),
   login: (data) => api.post('/auth/login', data),
   verifyOTP: (data) => api.post('/auth/verify-otp', data),
   resendOTP: (data) => api.post('/auth/resend-otp', data),

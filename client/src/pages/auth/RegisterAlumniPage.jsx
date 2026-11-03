@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { GraduationCap, Mail, Lock, User, BookOpen, Calendar, Building2, Linkedin } from 'lucide-react';
-import { authApi, getErrorMessage } from '../../services/api';
+import { authApi, pingBackend, getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/ui';
 import { DEPARTMENTS, GRADUATION_YEARS, ALLOWED_DOMAINS } from '../../utils/helpers';
 
@@ -28,10 +28,16 @@ const schema = z.object({
 export default function RegisterAlumniPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Creating account...');
   const [skillInput, setSkillInput] = useState('');
   const [skills, setSkills] = useState([]);
 
   const { register, handleSubmit, formState: { errors } } = useForm({ resolver: zodResolver(schema) });
+
+  // Pre-warm the Render backend on mount
+  useEffect(() => {
+    pingBackend();
+  }, []);
 
   const addSkill = () => {
     const s = skillInput.trim();
@@ -41,7 +47,13 @@ export default function RegisterAlumniPage() {
 
   const onSubmit = async (data) => {
     setLoading(true);
+    setLoadingMessage('Creating account...');
     const normalizedEmail = data.email.toLowerCase().trim();
+
+    const slowTimer = setTimeout(() => {
+      setLoadingMessage('Server is waking up, please wait…');
+    }, 8000);
+
     try {
       const res = await authApi.register({
         name: data.name.trim(),
@@ -56,6 +68,7 @@ export default function RegisterAlumniPage() {
         linkedinUrl: data.linkedinUrl?.trim(),
       });
 
+      clearTimeout(slowTimer);
       const responseData = res.data;
 
       if (responseData.requiresVerification) {
@@ -70,6 +83,7 @@ export default function RegisterAlumniPage() {
         navigate('/verify-otp', { state: { email: normalizedEmail } });
       }
     } catch (err) {
+      clearTimeout(slowTimer);
       const status = err?.response?.status;
       const responseData = err?.response?.data;
 
@@ -82,6 +96,7 @@ export default function RegisterAlumniPage() {
       toast.error(getErrorMessage(err));
     } finally {
       setLoading(false);
+      setLoadingMessage('Creating account...');
     }
   };
 
@@ -202,7 +217,12 @@ export default function RegisterAlumniPage() {
             </div>
 
             <button type="submit" id="alumni-register-submit" className="btn-primary w-full py-2.5 mt-2" disabled={loading}>
-              {loading ? <LoadingSpinner size="sm" /> : 'Create Alumni Account'}
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <LoadingSpinner size="sm" />
+                  <span className="text-sm">{loadingMessage}</span>
+                </span>
+              ) : 'Create Alumni Account'}
             </button>
           </form>
 
