@@ -30,18 +30,45 @@ export default function RegisterStudentPage() {
 
   const onSubmit = async (data) => {
     setLoading(true);
+    const normalizedEmail = data.email.toLowerCase().trim();
     try {
-      await authApi.register({
+      const res = await authApi.register({
         name: data.name.trim(),
-        email: data.email.toLowerCase().trim(),
+        email: normalizedEmail,
         password: data.password,
         role: 'student',
         department: data.department,
         graduationYear: parseInt(data.graduationYear),
       });
-      toast.success('Account created! Check your email for the OTP.');
-      navigate('/verify-otp', { state: { email: data.email.toLowerCase().trim() } });
+
+      const responseData = res.data;
+
+      // Both new accounts (201) and existing-unverified accounts (200 with
+      // requiresVerification) should proceed to OTP verification.
+      if (responseData.requiresVerification) {
+        if (responseData.message?.includes('unverified account already exists')) {
+          toast.info('A new OTP has been sent to your email. Please verify to continue.');
+        } else {
+          toast.success('Account created! Check your email for the OTP.');
+        }
+        navigate('/verify-otp', { state: { email: responseData.email || normalizedEmail } });
+      } else {
+        // Fallback — navigate to OTP page
+        toast.success('Account created! Check your email for the OTP.');
+        navigate('/verify-otp', { state: { email: normalizedEmail } });
+      }
     } catch (err) {
+      const status = err?.response?.status;
+      const responseData = err?.response?.data;
+
+      if (status === 409 && responseData?.alreadyVerified) {
+        // Fully verified account — direct the user to log in
+        toast.error('An account with this email already exists.');
+        navigate('/login');
+        return;
+      }
+
+      // All other errors (validation, server issues, etc.)
       toast.error(getErrorMessage(err));
     } finally {
       setLoading(false);

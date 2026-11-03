@@ -41,10 +41,11 @@ export default function RegisterAlumniPage() {
 
   const onSubmit = async (data) => {
     setLoading(true);
+    const normalizedEmail = data.email.toLowerCase().trim();
     try {
-      await authApi.register({
+      const res = await authApi.register({
         name: data.name.trim(),
-        email: data.email.toLowerCase().trim(),
+        email: normalizedEmail,
         password: data.password,
         role: 'alumni',
         department: data.department,
@@ -54,9 +55,30 @@ export default function RegisterAlumniPage() {
         skills,
         linkedinUrl: data.linkedinUrl?.trim(),
       });
-      toast.success('Account created! Check your email for the OTP.');
-      navigate('/verify-otp', { state: { email: data.email.toLowerCase().trim() } });
+
+      const responseData = res.data;
+
+      if (responseData.requiresVerification) {
+        if (responseData.message?.includes('unverified account already exists')) {
+          toast.info('A new OTP has been sent to your email. Please verify to continue.');
+        } else {
+          toast.success('Account created! Check your email for the OTP.');
+        }
+        navigate('/verify-otp', { state: { email: responseData.email || normalizedEmail } });
+      } else {
+        toast.success('Account created! Check your email for the OTP.');
+        navigate('/verify-otp', { state: { email: normalizedEmail } });
+      }
     } catch (err) {
+      const status = err?.response?.status;
+      const responseData = err?.response?.data;
+
+      if (status === 409 && responseData?.alreadyVerified) {
+        toast.error('An account with this email already exists.');
+        navigate('/login');
+        return;
+      }
+
       toast.error(getErrorMessage(err));
     } finally {
       setLoading(false);

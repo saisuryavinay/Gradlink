@@ -49,11 +49,27 @@ export const register = async (req, res, next) => {
 
     const existing = await User.findOne({ email: normalizedEmail });
     if (existing) {
-      if (!existing.isVerified) {
-        // Allow resend if not verified
-        return res.status(409).json({ message: 'An unverified account with this email exists. Please verify your email or request a new OTP.' });
+      if (existing.isVerified) {
+        // Account is fully active — tell the user to log in
+        return res.status(409).json({
+          message: 'An account with this email already exists. Please log in.',
+          alreadyVerified: true,
+        });
       }
-      return res.status(409).json({ message: 'An account with this email already exists.' });
+
+      // Account exists but is NOT verified — resend a fresh OTP so the student
+      // can continue without being permanently blocked.
+      // Reset the resend counter so old abandoned sessions don't block re-registration.
+      await EmailVerification.findOneAndUpdate(
+        { email: normalizedEmail },
+        { $set: { resendCount: 0 } }
+      );
+      await sendVerificationOTP(normalizedEmail, existing.name, true);
+      return res.status(200).json({
+        message: 'An unverified account already exists for this email. A new OTP has been sent. Please verify your email to continue.',
+        email: normalizedEmail,
+        requiresVerification: true,
+      });
     }
 
     const user = new User({
@@ -90,6 +106,7 @@ export const register = async (req, res, next) => {
     res.status(201).json({
       message: 'Account created. Please check your email for a verification OTP.',
       email: normalizedEmail,
+      requiresVerification: true,
     });
   } catch (error) {
     next(error);
