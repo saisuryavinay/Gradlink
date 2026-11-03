@@ -61,7 +61,11 @@ export default function RegisterStudentPage() {
       // Both new accounts (201) and existing-unverified accounts (200 with
       // requiresVerification) should proceed to OTP verification.
       if (responseData.requiresVerification) {
-        if (responseData.message?.includes('unverified account already exists')) {
+        if (responseData.emailFailed) {
+          // Account/OTP created in DB but email delivery failed server-side.
+          // Navigate to OTP page anyway — user can resend from there.
+          toast.warning('Account created, but the verification email could not be sent. Use "Resend OTP" on the next page.');
+        } else if (responseData.message?.includes('unverified account already exists')) {
           toast.info('A new OTP has been sent to your email. Please verify to continue.');
         } else {
           toast.success('Account created! Check your email for the OTP.');

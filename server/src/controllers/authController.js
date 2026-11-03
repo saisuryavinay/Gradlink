@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import EmailVerification from '../models/EmailVerification.js';
 import StudentProfile from '../models/StudentProfile.js';
 import AlumniProfile from '../models/AlumniProfile.js';
-import { sendOTPEmail, sendOTPEmailBackground } from '../config/email.js';
+import { sendOTPEmail } from '../config/email.js';
 
 const ALLOWED_DOMAINS = ['acet.ac.in', 'acoe.edu.in', 'aec.edu.in'];
 const OTP_EXPIRY_MINUTES = 5;
@@ -64,9 +64,19 @@ export const register = async (req, res, next) => {
         { email: normalizedEmail },
         { $set: { resendCount: 0 } }
       );
-      // background=true: save OTP to DB first, then fire email async so we
-      // respond immediately and avoid Render cold-start + SMTP timeouts.
-      await sendVerificationOTP(normalizedEmail, existing.name, true, true);
+
+      try {
+        await sendVerificationOTP(normalizedEmail, existing.name, true);
+      } catch (emailErr) {
+        console.error(`[REGISTER] OTP email failed for existing unverified user ${normalizedEmail}: ${emailErr.message}`);
+        return res.status(200).json({
+          message: 'An unverified account exists for this email. We could not send the OTP right now — please use the "Resend OTP" button on the verification page.',
+          email: normalizedEmail,
+          requiresVerification: true,
+          emailFailed: true,
+        });
+      }
+
       return res.status(200).json({
         message: 'An unverified account already exists for this email. A new OTP has been sent. Please verify your email to continue.',
         email: normalizedEmail,
@@ -102,10 +112,19 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Generate OTP and save to DB synchronously, then send email in background.
-    // This ensures the HTTP response is returned before SMTP delivery completes,
-    // preventing Render cold-start + SMTP latency from triggering a 30s timeout.
-    await sendVerificationOTP(normalizedEmail, name.trim(), false, true);
+    // Save OTP to DB and send email. If email delivery fails, the account and
+    // OTP record still exist — the user can retry with "Resend OTP".
+    try {
+      await sendVerificationOTP(normalizedEmail, name.trim(), false);
+    } catch (emailErr) {
+      console.error(`[REGISTER] OTP email failed for new user ${normalizedEmail}: ${emailErr.message}`);
+      return res.status(201).json({
+        message: 'Account created, but we could not send the verification email right now. Please use the "Resend OTP" button on the verification page to request a new OTP.',
+        email: normalizedEmail,
+        requiresVerification: true,
+        emailFailed: true,
+      });
+    }
 
     res.status(201).json({
       message: 'Account created. Please check your email for a verification OTP.',
@@ -117,7 +136,7 @@ export const register = async (req, res, next) => {
   }
 };
 
-export const sendVerificationOTP = async (email, name, isResend = true, background = false) => {
+export const sendVerificationOTP = async (email, name, isResend = true) => {
   // Check resend limits
   const existing = await EmailVerification.findOne({ email });
   if (isResend && existing) {
@@ -134,6 +153,8 @@ export const sendVerificationOTP = async (email, name, isResend = true, backgrou
   const otpHash = EmailVerification.hashOTP(otp);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
+  // Save OTP to DB first — if email fails, the record still exists
+  // and the user can retry with "Resend OTP".
   await EmailVerification.findOneAndUpdate(
     { email },
     {
@@ -148,13 +169,9 @@ export const sendVerificationOTP = async (email, name, isResend = true, backgrou
     { upsert: true, new: true }
   );
 
-  if (background) {
-    // Fire-and-forget: respond to the client immediately, deliver email async.
-    // If email fails, the OTP is still in DB and user can resend from OTP page.
-    sendOTPEmailBackground(email, otp, name);
-  } else {
-    await sendOTPEmail(email, otp, name);
-  }
+  // Always await — a delivery failure should surface as an error to the caller,
+  // not be silently swallowed. The caller decides how to respond to the client.
+  await sendOTPEmail(email, otp, name);
 };
 
 export const resendOTP = async (req, res, next) => {
