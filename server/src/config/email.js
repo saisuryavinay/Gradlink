@@ -1,39 +1,34 @@
 import nodemailer from 'nodemailer';
 
-// Do NOT cache the transporter as a module-level singleton.
-// On Render, environment variables are injected at startup. If the transporter
-// is created before env vars are ready, or if credentials change, the cached
-// instance will silently fail forever. Create fresh each time instead —
-// nodemailer's connection pooling is off by default for port 587 (STARTTLS),
-// so there is no meaningful performance cost.
 const createTransporter = () => {
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  // Strip all whitespace from the password — Gmail App Passwords are sometimes
+  // copy-pasted with spaces (e.g. "abcd efgh ijkl mnop") but must be sent as
+  // a continuous 16-character string.
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT) || 587;
-  const secure = process.env.SMTP_SECURE === 'true';
+  const secure = process.env.SMTP_SECURE === 'true'; // only true for port 465
 
   if (!user || !pass) {
+    console.error('[EMAIL] SMTP_USER or SMTP_PASS is missing from environment variables.');
     return null;
   }
 
-  console.log(`[EMAIL] Creating transporter — host: ${host}, port: ${port}, user: ${user}`);
+  console.log(`[EMAIL] Creating transporter — host: ${host}, port: ${port}, user: ${user}, secure: ${secure}`);
 
   return nodemailer.createTransport({
     host,
     port,
-    secure,
+    secure,       // false for port 587 (STARTTLS), true for port 465 (SSL)
     auth: { user, pass },
-    // Hard limits to prevent hanging on cloud hosts (Render, Railway, etc.)
-    connectionTimeout: 15000,  // 15 s to establish TCP connection
-    greetingTimeout: 15000,    // 15 s to receive SMTP greeting
-    socketTimeout: 30000,      // 30 s of idle socket before abort
-    // Force STARTTLS on port 587 even if server doesn't advertise it
-    requireTLS: !secure && port === 587,
+    // Do NOT set requireTLS=true — it breaks on some cloud hosts including Render.
+    // STARTTLS is negotiated automatically on port 587.
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
     tls: {
-      // Accept self-signed certs on port 587 (Gmail does not need this,
-      // but some relay services do)
-      rejectUnauthorized: false,
+      rejectUnauthorized: false, // allow self-signed certs on relay hosts
     },
   });
 };
