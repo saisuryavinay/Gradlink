@@ -170,16 +170,18 @@ export const sendVerificationOTP = async (email, name, isResend = true) => {
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
   // Save OTP to DB first (attempts reset, new hash + expiry).
-  // We do NOT update resendCount/lastResendAt yet — we only do that on
-  // confirmed delivery so a failed SMTP attempt doesn't eat a resend slot.
+  // Use $set so existing fields like resendCount/lastResendAt are preserved.
+  // We do NOT update resendCount/lastResendAt here — only after confirmed delivery.
   await EmailVerification.findOneAndUpdate(
     { email },
     {
-      email,
-      otpHash,
-      expiresAt,
-      attempts: 0,
-      verified: false,
+      $set: {
+        email,
+        otpHash,
+        expiresAt,
+        attempts: 0,
+        verified: false,
+      },
     },
     { upsert: true, new: true }
   );
@@ -189,10 +191,15 @@ export const sendVerificationOTP = async (email, name, isResend = true) => {
   await sendOTPEmail(email, otp, name);
 
   // ── Only update rate-limit tracking AFTER successful delivery ──────────
+  // $inc and $set must be separate operators — mixing bare fields with $inc
+  // causes MongoServerError: Invalid mix of update and field operations.
   if (isResend) {
     await EmailVerification.findOneAndUpdate(
       { email },
-      { $inc: { resendCount: 1 }, lastResendAt: new Date() }
+      {
+        $inc: { resendCount: 1 },
+        $set: { lastResendAt: new Date() },
+      }
     );
   }
 };
