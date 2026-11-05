@@ -26,10 +26,19 @@ app.use(helmet());
 // list in the Render environment variables, e.g.:
 //   CLIENT_URL=https://gradlink-five.vercel.app,https://gradlink-preview.vercel.app
 const allowedOrigins = [
+  // ── Local development ────────────────────────────────────────────────────
   'http://localhost:5173',
   'http://localhost:5174',
+  // ── Vercel deployments ───────────────────────────────────────────────────
   'https://gradlink-three.vercel.app',
-  'https://gradlink-five.vercel.app',       // current production Vercel frontend
+  'https://gradlink-five.vercel.app',
+  // ── Custom domain (gradlink.me) ──────────────────────────────────────────
+  'https://gradlink.me',
+  'https://www.gradlink.me',
+  // ── Extra origins from Render env var (comma-separated list) ────────────
+  // Set CLIENT_URL in Render Dashboard → Environment to allow additional
+  // preview/staging origins without redeploying, e.g.:
+  //   CLIENT_URL=https://gradlink-preview.vercel.app,https://staging.gradlink.me
   ...(process.env.CLIENT_URL
     ? process.env.CLIENT_URL.split(',').map((o) => o.trim()).filter(Boolean)
     : []),
