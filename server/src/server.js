@@ -21,8 +21,8 @@ if (!process.env.MONGODB_URI) {
 if (!process.env.GEMINI_API_KEY) {
   console.warn('[CONFIG] GEMINI_API_KEY is not set. AI Resume Analyzer will be unavailable.');
 }
-if (!process.env.SMTP_USER) {
-  console.warn('[CONFIG] SMTP_USER is not set. Email verification will be unavailable.');
+if (!process.env.RESEND_API_KEY && !process.env.SMTP_USER) {
+  console.warn('[CONFIG] Neither RESEND_API_KEY nor SMTP_USER is set. OTP emails will fail.');
 }
 
 const startServer = async () => {
