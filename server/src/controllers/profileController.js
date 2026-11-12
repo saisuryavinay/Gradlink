@@ -1,6 +1,14 @@
 import User from '../models/User.js';
 import StudentProfile from '../models/StudentProfile.js';
 import AlumniProfile from '../models/AlumniProfile.js';
+import mongoose from 'mongoose';
+import { GridFSBucket } from 'mongodb';
+import { Readable } from 'stream';
+
+function getAvatarBucket() {
+  if (!mongoose.connection.db) throw new Error('Database not connected.');
+  return new GridFSBucket(mongoose.connection.db, { bucketName: 'avatars' });
+}
 
 // GET /api/profile/me
 export const getMyProfile = async (req, res, next) => {
@@ -183,3 +191,106 @@ export const requestDeactivation = async (req, res, next) => {
     next(error);
   }
 };
+
+// POST /api/profile/avatar — upload a profile photo
+export const uploadAvatarPhoto = async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No image file uploaded.' });
+
+    const user = await User.findById(req.user._id);
+    const bucket = getAvatarBucket();
+
+    // Delete old GridFS avatar file if one exists
+    if (user.avatarFileId) {
+      try {
+        await bucket.delete(new mongoose.Types.ObjectId(user.avatarFileId));
+      } catch {
+        // If old file is missing, that's fine — continue
+      }
+    }
+
+    // Upload new image to GridFS
+    const filename = `avatar_${user._id}_${Date.now()}${require_ext(req.file.originalname)}`;
+    const uploadStream = bucket.openUploadStream(filename, {
+      contentType: req.file.mimetype,
+      metadata: { userId: user._id, uploadedAt: new Date() },
+    });
+
+    const readable = Readable.from(req.file.buffer);
+    await new Promise((resolve, reject) => {
+      readable.pipe(uploadStream);
+      uploadStream.on('finish', resolve);
+      uploadStream.on('error', reject);
+    });
+
+    const fileId = uploadStream.id;
+
+    // Save fileId on user — avatar field set to 'photo' as sentinel
+    user.avatarFileId = fileId;
+    user.avatar = 'photo'; // signals that a custom photo is set
+    await user.save();
+
+    const updatedUser = await User.findById(user._id);
+    res.json({
+      message: 'Profile photo uploaded successfully.',
+      user: updatedUser,
+      avatarFileId: fileId.toString(),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/profile/avatar/:userId — stream the avatar image
+export const getAvatarPhoto = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.userId).select('avatarFileId avatar');
+    if (!user || !user.avatarFileId || user.avatar !== 'photo') {
+      return res.status(404).json({ message: 'No profile photo set.' });
+    }
+
+    const bucket = getAvatarBucket();
+    const fileId = new mongoose.Types.ObjectId(user.avatarFileId);
+
+    // Check file exists
+    const files = await bucket.find({ _id: fileId }).toArray();
+    if (!files.length) return res.status(404).json({ message: 'Photo not found.' });
+
+    res.setHeader('Content-Type', files[0].metadata?.contentType || files[0].contentType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour cache
+    bucket.openDownloadStream(fileId).pipe(res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// DELETE /api/profile/avatar — remove profile photo, revert to initials
+export const removeAvatarPhoto = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (user.avatarFileId) {
+      try {
+        const bucket = getAvatarBucket();
+        await bucket.delete(new mongoose.Types.ObjectId(user.avatarFileId));
+      } catch {
+        // Missing file — ignore
+      }
+    }
+
+    user.avatarFileId = null;
+    user.avatar = 'avatar_1'; // revert to initials-based avatar
+    await user.save();
+
+    const updatedUser = await User.findById(user._id);
+    res.json({ message: 'Profile photo removed.', user: updatedUser });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Helper — get extension from original filename
+function require_ext(filename) {
+  const idx = filename.lastIndexOf('.');
+  return idx >= 0 ? filename.slice(idx).toLowerCase() : '.jpg';
+}

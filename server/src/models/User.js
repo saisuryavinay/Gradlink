@@ -59,6 +59,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: 'avatar_1',
     },
+    // GridFS file id for uploaded profile photo
+    avatarFileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     themePreference: {
       type: String,
       enum: ['light', 'dark', 'system'],

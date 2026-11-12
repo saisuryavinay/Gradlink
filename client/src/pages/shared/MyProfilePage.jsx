@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 import { profileApi, getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/ui';
-import Avatar from '../../components/Avatar';
+import AvatarUpload from '../../components/AvatarUpload';
 import SkillsInput from '../../components/SkillsInput';
 import { User, Building2, Briefcase, BookOpen, Code, Linkedin, Github, Globe, Edit2, Save, X } from 'lucide-react';
 import { DEPARTMENTS, GRADUATION_YEARS } from '../../utils/helpers';
@@ -91,7 +91,13 @@ export default function MyProfilePage() {
       {/* Header */}
       <div className="card p-6">
         <div className="flex items-center gap-4 mb-4">
-          <Avatar user={user} size="xl" />
+          <div className="flex flex-col items-center gap-1">
+            <AvatarUpload
+              user={user}
+              size="xl"
+              onSaved={(updatedUser) => updateUser(updatedUser)}
+            />
+          </div>
           <div>
             {editing
               ? <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input text-lg font-bold mb-1" />

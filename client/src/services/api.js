@@ -80,6 +80,14 @@ export const profileApi = {
   getAlumniProfile: (id) => api.get(`/profile/alumni/${id}`),
   getStudentProfile: (id) => api.get(`/profile/student/${id}`),
   requestDeactivation: () => api.post('/profile/deactivate-request'),
+  // Avatar
+  uploadAvatar: (formData) => api.post('/profile/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  }),
+  removeAvatar: () => api.delete('/profile/avatar'),
+  // Build the avatar image URL for a given userId (served by backend)
+  getAvatarUrl: (userId) => `${API_URL}/profile/avatar/${userId}`,
 };
 
 // --- Mentorship API ---
