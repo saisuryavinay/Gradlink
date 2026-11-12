@@ -6,6 +6,9 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Incremented after every avatar upload — passed to <Avatar cacheBust=...>
+  // so all Avatar instances refresh their img src without a stale cached 404.
+  const [avatarCacheBust, setAvatarCacheBust] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem('gradlink_token');
@@ -31,16 +34,21 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('gradlink_token');
     localStorage.removeItem('gradlink_user');
     setUser(null);
+    setAvatarCacheBust(null);
   };
 
   const updateUser = (updates) => {
     const updated = { ...user, ...updates };
     localStorage.setItem('gradlink_user', JSON.stringify(updated));
     setUser(updated);
+    // If the avatar changed (upload or remove), bust the cache for all Avatar instances
+    if (updates.avatar !== undefined && updates.avatar !== user?.avatar) {
+      setAvatarCacheBust(Date.now());
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser, avatarCacheBust }}>
       {children}
     </AuthContext.Provider>
   );

@@ -160,7 +160,7 @@ function ThemeToggle() {
 }
 
 export default function DashboardLayout({ role }) {
-  const { user, logout } = useAuth();
+  const { user, logout, avatarCacheBust } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
@@ -274,7 +274,7 @@ export default function DashboardLayout({ role }) {
               onClick={() => setUserMenuOpen(!userMenuOpen)}
               className="flex items-center gap-2 pl-2 pr-3 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
             >
-              <Avatar user={user} size="sm" />
+              <Avatar user={user} size="sm" cacheBust={avatarCacheBust} />
               <span className="hidden sm:block text-sm font-medium text-slate-700 dark:text-slate-200 max-w-[120px] truncate">
                 {user?.name?.split(' ')[0]}
               </span>

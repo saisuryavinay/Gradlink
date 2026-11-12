@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getAvatarColor, getInitials } from '../utils/helpers';
 import { profileApi } from '../services/api';
 
@@ -12,17 +12,18 @@ import { profileApi } from '../services/api';
  *   user       — the user object (needs .name, .avatar, ._id)
  *   size       — 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'
  *   className  — extra CSS classes
- *   photoUrl   — override the auto-derived URL (for local preview before upload)
+ *   photoUrl   — override URL (e.g. a local blob URL after upload for instant display)
+ *   cacheBust  — number/string to force re-fetch (e.g. Date.now() after upload)
  */
-export default function Avatar({ user, size = 'md', className = '', photoUrl }) {
+export default function Avatar({ user, size = 'md', className = '', photoUrl, cacheBust }) {
   const [imgError, setImgError] = useState(false);
 
   const sizes = {
-    xs:  'h-6 w-6 text-xs',
-    sm:  'h-8 w-8 text-xs',
-    md:  'h-10 w-10 text-sm',
-    lg:  'h-12 w-12 text-base',
-    xl:  'h-16 w-16 text-xl',
+    xs:    'h-6 w-6 text-xs',
+    sm:    'h-8 w-8 text-xs',
+    md:    'h-10 w-10 text-sm',
+    lg:    'h-12 w-12 text-base',
+    xl:    'h-16 w-16 text-xl',
     '2xl': 'h-24 w-24 text-3xl',
   };
 
@@ -30,17 +31,25 @@ export default function Avatar({ user, size = 'md', className = '', photoUrl }) 
   const initials = getInitials(user?.name);
   const colorClass = getAvatarColor(user?.name);
 
-  // Determine if we should show a photo
-  const hasPhoto = !imgError && (
-    photoUrl ||                             // local preview blob URL
-    (user?.avatar === 'photo' && user?._id) // persisted photo
-  );
+  // Build the backend URL for the persisted photo.
+  // Use cacheBust prop when provided (after a fresh upload) so the browser
+  // doesn't serve a stale cached response.
+  const backendUrl =
+    user?.avatar === 'photo' && user?._id
+      ? `${profileApi.getAvatarUrl(user._id)}?t=${cacheBust ?? user.updatedAt ?? Date.now()}`
+      : null;
 
-  const src = photoUrl || (user?.avatar === 'photo' && user?._id
-    ? `${profileApi.getAvatarUrl(user._id)}?t=${user.updatedAt || Date.now()}`
-    : null);
+  // Final src: prefer the local blob URL (instant display), then the backend URL.
+  const src = photoUrl || backendUrl;
 
-  if (hasPhoto && src) {
+  // Reset imgError whenever the src changes so a corrected URL is retried.
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
+  const hasPhoto = !!src && !imgError;
+
+  if (hasPhoto) {
     return (
       <img
         src={src}
