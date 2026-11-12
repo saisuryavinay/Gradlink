@@ -8,6 +8,14 @@ import mongoose from 'mongoose';
 import { GridFSBucket } from 'mongodb';
 import { Readable } from 'stream';
 
+// Models in priority order — first working model wins.
+// Verified against the API key's available models list (Nov 2026).
+const GEMINI_MODELS = [
+  'gemini-3.8-flash',   // Primary — latest recommended flash model
+  'gemini-2.5-flash',   // Fallback 1 — also confirmed available
+  'gemini-3.5-flash',   // Fallback 2
+];
+
 function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -17,6 +25,77 @@ function getGeminiClient() {
     );
   }
   return new GoogleGenerativeAI(apiKey);
+}
+
+/**
+ * Sleep for `ms` milliseconds.
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Call Gemini with automatic model fallback and exponential backoff for
+ * transient 429 / 503 errors.
+ *
+ * @param {string} prompt
+ * @returns {Promise<string>} Raw text response from the model
+ */
+async function callGeminiWithFallback(prompt) {
+  const genAI = getGeminiClient();
+  const MAX_RETRIES = 3;
+
+  for (const modelName of GEMINI_MODELS) {
+    const model = genAI.getGenerativeModel({ model: modelName });
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim(); // success — return immediately
+      } catch (err) {
+        const msg = err.message || '';
+        const isNotFound =
+          msg.includes('not found') ||
+          msg.includes('404') ||
+          msg.includes('no longer available') ||
+          msg.includes('deprecated');
+
+        const isTransient =
+          msg.includes('429') ||
+          msg.includes('503') ||
+          msg.includes('quota') ||
+          msg.includes('QUOTA') ||
+          msg.includes('rate limit') ||
+          msg.includes('overloaded') ||
+          msg.includes('RESOURCE_EXHAUSTED');
+
+        if (isNotFound) {
+          // This model isn't available — try the next one immediately
+          console.warn(`[GEMINI] Model ${modelName} not available, trying next fallback.`);
+          break; // break inner retry loop → outer model loop
+        }
+
+        if (isTransient && attempt < MAX_RETRIES) {
+          // Exponential backoff: 2s, 4s, 8s
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`[GEMINI] Transient error on ${modelName} (attempt ${attempt}/${MAX_RETRIES}), retrying in ${delay}ms…`);
+          await sleep(delay);
+          continue; // retry same model
+        }
+
+        // Non-transient error or final retry exhausted — re-throw
+        throw err;
+      }
+    }
+  }
+
+  // All models exhausted
+  throw Object.assign(
+    new Error(
+      'All Gemini models are currently unavailable. This may be due to API quota limits or a temporary outage. Please try again in a few minutes.'
+    ),
+    { statusCode: 503 }
+  );
 }
 
 function getGridFSBucket() {
@@ -162,11 +241,7 @@ Provide a structured JSON analysis with EXACTLY these fields (all required):
 Important: Return ONLY the JSON object. No markdown, no code fences, no extra text. Every field must be present. Use empty arrays [] for sections not applicable.`;
 
     try {
-      const genAI = getGeminiClient();
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-      const aiResult = await model.generateContent(prompt);
-      const rawText = aiResult.response.text().trim();
+      const rawText = await callGeminiWithFallback(prompt);
 
       // Parse JSON from response
       let parsed;
@@ -247,15 +322,31 @@ Important: Return ONLY the JSON object. No markdown, no code fences, no extra te
         errorMessage: geminiError.message,
       });
 
+      // API key not configured or all models exhausted
       if (geminiError.statusCode === 503) return next(geminiError);
+
+      // Rate limit or quota exceeded
       if (
+        geminiError.message.includes('429') ||
         geminiError.message.includes('quota') ||
         geminiError.message.includes('QUOTA') ||
-        geminiError.message.includes('rate limit')
+        geminiError.message.includes('rate limit') ||
+        geminiError.message.includes('RESOURCE_EXHAUSTED')
       ) {
         return res
           .status(503)
-          .json({ message: 'Gemini API quota exceeded. Please try again later.' });
+          .json({ message: 'Gemini API quota exceeded. Please try again in a few minutes.' });
+      }
+
+      // Model not found (shouldn't happen with fallback, but be safe)
+      if (
+        geminiError.message.includes('not found') ||
+        geminiError.message.includes('no longer available')
+      ) {
+        return res.status(503).json({
+          message:
+            'The AI model is temporarily unavailable. Our system will retry with a backup model. Please try again.',
+        });
       }
 
       return res.status(500).json({ message: `AI analysis failed: ${geminiError.message}` });
