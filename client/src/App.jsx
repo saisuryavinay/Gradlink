@@ -19,7 +19,6 @@ import StudentDashboard from './pages/student/Dashboard';
 import AlumniDirectory from './pages/shared/AlumniDirectory';
 import AlumniProfilePage from './pages/shared/AlumniProfilePage';
 import MentorshipPage from './pages/student/MentorshipPage';
-import PlacementUpdatesPage from './pages/student/PlacementUpdatesPage';
 import JobsPage from './pages/student/JobsPage';
 import JobDetailPage from './pages/shared/JobDetailPage';
 import SavedJobsPage from './pages/student/SavedJobsPage';
@@ -92,7 +91,6 @@ export default function App() {
         <Route path="discover-alumni" element={<AlumniDirectory />} />
         <Route path="discover-alumni/:id" element={<AlumniProfilePage />} />
         <Route path="mentorship" element={<MentorshipPage />} />
-        <Route path="placement-updates" element={<PlacementUpdatesPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="jobs/placement" element={<JobsPage category="placement" title="Placement Drives" />} />
         <Route path="jobs/off-campus" element={<JobsPage category="off-campus" title="Off-Campus Jobs" />} />

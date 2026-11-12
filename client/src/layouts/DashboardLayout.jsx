@@ -19,7 +19,6 @@ const NAV = {
     { label: 'Dashboard', path: '', icon: LayoutDashboard, end: true },
     { label: 'Discover Alumni', path: 'discover-alumni', icon: Users },
     { label: 'Mentorship Requests', path: 'mentorship', icon: Star },
-    { label: 'Placement Updates', path: 'placement-updates', icon: Megaphone },
     { label: 'Placement Drives', path: 'jobs/placement', icon: Award },
     { label: 'Off-Campus Jobs', path: 'jobs/off-campus', icon: Briefcase },
     { label: 'Alumni Job Postings', path: 'jobs/alumni-posted', icon: Building2 },
