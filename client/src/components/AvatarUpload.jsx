@@ -3,63 +3,76 @@
  *
  * Wraps the Avatar component with an upload overlay.
  *
- * Fix summary (Nov 2026):
- * - After a successful save the blob preview URL is kept alive in `savedPhotoUrl`
- *   and fed to <Avatar photoUrl=...> so the photo shows immediately without
- *   waiting for a backend round-trip that could fail on a cold Render start.
- * - The blob URL is only revoked when the user uploads a newer photo or removes
- *   the photo (at which point we fall back to the fresh backend URL or initials).
- * - A fresh cacheBust timestamp is passed to <Avatar> after every upload so the
- *   browser does not serve a stale cached 404 response.
+ * Fix notes (Nov 2026):
+ * - After a successful save, the blob URL preview is passed directly to <Avatar photoUrl>
+ *   for immediate display (no backend round-trip required).
+ * - avatarCacheBust is set to Date.now() after every save so the backend img URL
+ *   is refreshed on the next page load / navigation (bypasses browser cache).
+ * - The blob URL is stored in a ref so it survives React re-renders without being
+ *   revoked prematurely. It is only revoked when a newer photo replaces it or the
+ *   component unmounts AND a new photo has since been uploaded.
+ * - updateUser is called directly from AvatarUpload (not just via onSaved) so the
+ *   AuthContext cache-bust fires immediately after every upload/remove.
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, Trash2, X, CheckCircle, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import Avatar from './Avatar';
 import { LoadingSpinner } from './ui';
 import { profileApi, getErrorMessage } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function AvatarUpload({ user, size = 'xl', onSaved }) {
+  const { updateUser } = useAuth();
   const fileRef = useRef(null);
 
-  // Blob URL for preview in the modal
-  const [preview, setPreview] = useState(null);
+  // Modal state
+  const [preview, setPreview] = useState(null);       // blob URL for the modal preview
   const [previewFile, setPreviewFile] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
 
-  // After a successful upload we keep the blob URL here so Avatar displays
-  // the photo immediately without depending on the backend img endpoint.
-  const [savedPhotoUrl, setSavedPhotoUrl] = useState(null);
-  // Timestamp passed to Avatar as cache-buster after each upload.
+  // After a successful upload, we keep the blob URL here so Avatar displays
+  // the photo immediately without a backend round-trip that might fail on a
+  // cold Render start. This is a React state (not ref) so Avatar re-renders.
+  const [photoUrl, setPhotoUrl] = useState(null);
+
+  // The timestamp passed to <Avatar> as cache-buster after each upload.
   const [cacheBust, setCacheBust] = useState(null);
 
-  // When the user prop changes (e.g. logout → login as different user), clear
-  // the cached local preview so we don't show the wrong photo.
+  // Ref tracks the blob URL currently owned by photoUrl so we can revoke
+  // it safely when it is replaced without accidentally revoking a preview.
+  const ownedBlobRef = useRef(null);
+
+  // When user prop changes (logout → login as a different user, or photo
+  // removed server-side) clear the local blob display.
   useEffect(() => {
-    if (user?.avatar !== 'photo') {
-      // User removed their photo server-side or logged in without a photo
-      if (savedPhotoUrl) {
-        URL.revokeObjectURL(savedPhotoUrl);
-        setSavedPhotoUrl(null);
-        setCacheBust(null);
+    if (!user?._id || user?.avatar !== 'photo') {
+      // Revoke and clear any held blob
+      if (ownedBlobRef.current) {
+        URL.revokeObjectURL(ownedBlobRef.current);
+        ownedBlobRef.current = null;
       }
+      setPhotoUrl(null);
+      setCacheBust(null);
     }
   }, [user?._id, user?.avatar]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Revoke preview blob if modal is still open at unmount time
       if (preview) URL.revokeObjectURL(preview);
-      // Note: savedPhotoUrl is intentionally NOT revoked here because the
-      // Avatar component (rendered in the topbar etc.) might still be using it.
+      // Note: ownedBlobRef is intentionally NOT revoked here — the blob may
+      // still be used by an Avatar in the topbar that is about to re-render.
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validateFile = (f) => {
@@ -79,7 +92,7 @@ export default function AvatarUpload({ user, size = 'xl', onSaved }) {
   const handleFileSelect = (e) => {
     const f = e.target.files?.[0];
     if (!f || !validateFile(f)) return;
-    // Revoke previous preview blob (not the saved one)
+    // Revoke any previous *modal* preview (not the saved photoUrl)
     if (preview) URL.revokeObjectURL(preview);
     setPreview(URL.createObjectURL(f));
     setPreviewFile(f);
@@ -87,7 +100,7 @@ export default function AvatarUpload({ user, size = 'xl', onSaved }) {
     e.target.value = '';
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!previewFile) return;
     setUploading(true);
     try {
@@ -95,41 +108,50 @@ export default function AvatarUpload({ user, size = 'xl', onSaved }) {
       fd.append('avatar', previewFile);
       const res = await profileApi.uploadAvatar(fd);
 
-      // ── KEY FIX ──────────────────────────────────────────────────────────
-      // Keep the blob URL alive so Avatar renders the photo instantly.
-      // Revoke the old savedPhotoUrl first (if any).
-      if (savedPhotoUrl) URL.revokeObjectURL(savedPhotoUrl);
-      setSavedPhotoUrl(preview);        // transfer ownership to savedPhotoUrl
-      setCacheBust(Date.now());         // force backend URL cache-bust too
-      // ─────────────────────────────────────────────────────────────────────
-
-      // Update global user context with returned user (avatar='photo' etc.)
-      onSaved?.(res.data.user);
-
-      toast.success('Profile photo updated!');
-
-      // Close modal WITHOUT revoking the preview blob (now owned by savedPhotoUrl)
-      setPreview(null);
+      // ── KEY FIX 1: use the preview blob URL for instant display ──────────
+      // Revoke the previously owned blob (if any) BEFORE claiming the new one.
+      if (ownedBlobRef.current) {
+        URL.revokeObjectURL(ownedBlobRef.current);
+      }
+      // Transfer ownership: preview blob → photoUrl state + ref
+      ownedBlobRef.current = preview;      // now we own this blob
+      setPhotoUrl(preview);               // Avatar renders it instantly
+      setPreview(null);                   // clear preview state (don't revoke!)
       setPreviewFile(null);
       setModalOpen(false);
+
+      // ── KEY FIX 2: set a fresh cache-bust so the backend URL works after refresh
+      const bust = Date.now();
+      setCacheBust(bust);
+
+      // ── KEY FIX 3: update global auth context (also sets avatarCacheBust) ─
+      const updatedUser = res.data.user;
+      updateUser(updatedUser);
+      onSaved?.(updatedUser);
+
+      toast.success('Profile photo updated!');
     } catch (err) {
       toast.error(getErrorMessage(err));
     } finally {
       setUploading(false);
     }
-  };
+  }, [previewFile, preview, updateUser, onSaved]);
 
   const handleRemove = async () => {
     setRemoving(true);
     try {
       const res = await profileApi.removeAvatar();
-      // Clear local preview — fall back to initials
-      if (savedPhotoUrl) {
-        URL.revokeObjectURL(savedPhotoUrl);
-        setSavedPhotoUrl(null);
-        setCacheBust(null);
+      // Revoke and clear local blob
+      if (ownedBlobRef.current) {
+        URL.revokeObjectURL(ownedBlobRef.current);
+        ownedBlobRef.current = null;
       }
-      onSaved?.(res.data.user);
+      setPhotoUrl(null);
+      setCacheBust(null);
+
+      const updatedUser = res.data.user;
+      updateUser(updatedUser);
+      onSaved?.(updatedUser);
       toast.success('Profile photo removed.');
     } catch (err) {
       toast.error(getErrorMessage(err));
@@ -139,7 +161,7 @@ export default function AvatarUpload({ user, size = 'xl', onSaved }) {
   };
 
   const closeModal = () => {
-    // Revoke the modal preview blob (not the savedPhotoUrl)
+    // Revoke the modal preview blob (we do NOT own the photoUrl blob here)
     if (preview) URL.revokeObjectURL(preview);
     setPreview(null);
     setPreviewFile(null);
@@ -153,14 +175,14 @@ export default function AvatarUpload({ user, size = 'xl', onSaved }) {
       {/* Clickable avatar with camera overlay */}
       <div className="relative group inline-block flex-shrink-0">
         {/*
-          Pass savedPhotoUrl as photoUrl so the photo shows instantly after upload
-          without waiting for the backend image endpoint.
-          Pass cacheBust to force a fresh fetch on subsequent page loads.
+          photoUrl  = local blob URL — shows immediately after upload, no backend needed.
+          cacheBust = timestamp — forces a fresh fetch from backend on next page load.
+          When photoUrl is null, Avatar falls back to the backend URL (or initials).
         */}
         <Avatar
           user={user}
           size={size}
-          photoUrl={savedPhotoUrl}
+          photoUrl={photoUrl}
           cacheBust={cacheBust}
         />
 

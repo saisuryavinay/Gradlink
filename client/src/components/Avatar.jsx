@@ -12,8 +12,10 @@ import { profileApi } from '../services/api';
  *   user       — the user object (needs .name, .avatar, ._id)
  *   size       — 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'
  *   className  — extra CSS classes
- *   photoUrl   — override URL (e.g. a local blob URL after upload for instant display)
- *   cacheBust  — number/string to force re-fetch (e.g. Date.now() after upload)
+ *   photoUrl   — override URL (e.g. a local blob URL after upload for instant display).
+ *                When provided and truthy, it is used as-is (no cache-busting needed).
+ *   cacheBust  — number/string appended as ?t=<value> to the backend URL to bypass
+ *                the browser's HTTP cache after a re-upload. Pass Date.now() after upload.
  */
 export default function Avatar({ user, size = 'md', className = '', photoUrl, cacheBust }) {
   const [imgError, setImgError] = useState(false);
@@ -32,17 +34,19 @@ export default function Avatar({ user, size = 'md', className = '', photoUrl, ca
   const colorClass = getAvatarColor(user?.name);
 
   // Build the backend URL for the persisted photo.
-  // Use cacheBust prop when provided (after a fresh upload) so the browser
-  // doesn't serve a stale cached response.
+  // Always append a cache-buster: prefer the explicit cacheBust prop (set after
+  // fresh upload), then user.updatedAt (changes after every profile save), then
+  // Date.now() as a last-resort so stale cached 404 responses are never served.
   const backendUrl =
     user?.avatar === 'photo' && user?._id
       ? `${profileApi.getAvatarUrl(user._id)}?t=${cacheBust ?? user.updatedAt ?? Date.now()}`
       : null;
 
-  // Final src: prefer the local blob URL (instant display), then the backend URL.
+  // Final src: prefer the local blob URL (instant display, no network), then the backend URL.
   const src = photoUrl || backendUrl;
 
-  // Reset imgError whenever the src changes so a corrected URL is retried.
+  // Reset imgError whenever src changes so a corrected URL always gets a fresh try.
+  // This handles: upload → new blob URL, refresh → new backend URL with fresh cacheBust.
   useEffect(() => {
     setImgError(false);
   }, [src]);

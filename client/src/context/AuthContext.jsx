@@ -41,8 +41,13 @@ export const AuthProvider = ({ children }) => {
     const updated = { ...user, ...updates };
     localStorage.setItem('gradlink_user', JSON.stringify(updated));
     setUser(updated);
-    // If the avatar changed (upload or remove), bust the cache for all Avatar instances
-    if (updates.avatar !== undefined && updates.avatar !== user?.avatar) {
+    // Bust the avatar cache on every updateUser call that touches avatar-related
+    // fields — this covers: first upload, re-upload (same sentinel value 'photo'),
+    // and remove. We always fire so a second upload immediately refreshes the img.
+    if (
+      updates.avatar !== undefined ||
+      updates.avatarFileId !== undefined
+    ) {
       setAvatarCacheBust(Date.now());
     }
   };

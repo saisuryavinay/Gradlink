@@ -256,8 +256,13 @@ export const getAvatarPhoto = async (req, res, next) => {
     const files = await bucket.find({ _id: fileId }).toArray();
     if (!files.length) return res.status(404).json({ message: 'Photo not found.' });
 
-    res.setHeader('Content-Type', files[0].metadata?.contentType || files[0].contentType || 'image/jpeg');
-    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour cache
+    // GridFS stores contentType at the top level of the file document, not in metadata.
+    const contentType = files[0].contentType || files[0].metadata?.contentType || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    // No-cache so the browser always fetches the latest avatar after re-upload.
+    // The frontend appends ?t=<timestamp> for cache-busting anyway.
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     bucket.openDownloadStream(fileId).pipe(res);
   } catch (error) {
     next(error);
