@@ -32,7 +32,8 @@ export default function MyProfilePage() {
       name: u?.name || '',
       department: u?.department || '',
       graduationYear: u?.graduationYear || '',
-      skills: u?.skills || [],
+      // For students, skills live in StudentProfile; for alumni, in User
+      skills: (u?.role === 'student' ? p?.skills : u?.skills) || [],
       currentCompany: u?.currentCompany || '',
       currentRole: u?.currentRole || '',
       linkedinUrl: p?.linkedinUrl || '',
@@ -50,8 +51,13 @@ export default function MyProfilePage() {
     setSaving(true);
     try {
       const res = await profileApi.updateMyProfile(form);
-      setProfile(res.data.profile);
-      updateUser(res.data.user);
+      const savedProfile = res.data.profile;
+      const savedUser = res.data.user;
+      setProfile(savedProfile);
+      updateUser(savedUser);
+      // Re-seed the form from the freshly-saved data so reopening edit
+      // shows the latest values (including bio and skills).
+      initForm(savedUser, savedProfile);
       setEditing(false);
       toast.success('Profile updated.');
     } catch (err) {
@@ -83,7 +89,7 @@ export default function MyProfilePage() {
           : (
             <div className="flex gap-2">
               <button onClick={handleSave} disabled={saving} className="btn-primary"><Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save'}</button>
-              <button onClick={() => setEditing(false)} className="btn-ghost"><X className="h-4 w-4" /></button>
+              <button onClick={() => { initForm(user, profile); setEditing(false); }} className="btn-ghost"><X className="h-4 w-4" /></button>
             </div>
           )
         }
@@ -191,7 +197,13 @@ export default function MyProfilePage() {
           </>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {user?.skills?.length > 0 ? user.skills.map((s) => <span key={s} className="badge-blue">{s}</span>) : <p className="text-sm text-slate-400">No skills added.</p>}
+            {/* Students: skills stored in StudentProfile; Alumni: skills stored on User */}
+            {(() => {
+              const displaySkills = isStudent ? profile?.skills : user?.skills;
+              return displaySkills?.length > 0
+                ? displaySkills.map((s) => <span key={s} className="badge-blue">{s}</span>)
+                : <p className="text-sm text-slate-400">No skills added.</p>;
+            })()}
           </div>
         )}
       </div>

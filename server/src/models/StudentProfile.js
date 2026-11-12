@@ -12,6 +12,8 @@ const studentProfileSchema = new mongoose.Schema(
     cgpa: { type: Number, min: 0, max: 10 },
     percentage: { type: Number, min: 0, max: 100 },
     backlogs: { type: Number, default: 0, min: 0 },
+    // Bio / About
+    bio: { type: String, trim: true, maxlength: 1000 },
     // Skills & Projects
     skills: [{ type: String, trim: true }],
     projects: [

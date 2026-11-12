@@ -30,11 +30,12 @@ export const updateMyProfile = async (req, res, next) => {
     });
 
     if (user.role === 'student') {
-      const studentFields = ['linkedinUrl', 'githubUrl'];
-      studentFields.forEach((f) => { if (req.body[f] !== undefined) user[f] = req.body[f]; });
+      // Students can update department and graduationYear on their User record
+      const studentUserFields = ['department', 'graduationYear'];
+      studentUserFields.forEach((f) => { if (req.body[f] !== undefined) user[f] = req.body[f]; });
     }
     if (user.role === 'alumni') {
-      const alumniUserFields = ['currentCompany', 'currentRole', 'skills', 'linkedinUrl'];
+      const alumniUserFields = ['currentCompany', 'currentRole', 'skills', 'linkedinUrl', 'department', 'graduationYear'];
       alumniUserFields.forEach((f) => { if (req.body[f] !== undefined) user[f] = req.body[f]; });
     }
 
@@ -43,7 +44,7 @@ export const updateMyProfile = async (req, res, next) => {
     // Update profile
     if (user.role === 'student') {
       const allowedStudentFields = [
-        'cgpa', 'percentage', 'backlogs', 'skills', 'projects',
+        'bio', 'cgpa', 'percentage', 'backlogs', 'skills', 'projects',
         'certifications', 'achievements', 'education',
         'preferredRoles', 'preferredLocations', 'jobTypePreference',
         'linkedinUrl', 'githubUrl', 'portfolioUrl',
@@ -59,7 +60,7 @@ export const updateMyProfile = async (req, res, next) => {
       );
     } else if (user.role === 'alumni') {
       const allowedAlumniFields = [
-        'currentCompany', 'currentRole', 'skills', 'workExperience',
+        'bio', 'currentCompany', 'currentRole', 'skills', 'workExperience',
         'careerJourney', 'education', 'projects', 'certifications',
         'achievements', 'mentorshipAvailable', 'mentorshipAreas',
         'mentorshipInterests', 'areasOfExpertise',
