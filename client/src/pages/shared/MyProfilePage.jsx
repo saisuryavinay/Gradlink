@@ -146,14 +146,45 @@ export default function MyProfilePage() {
               <div>
                 <label className="label">CGPA</label>
                 {editing
-                  ? <input type="number" step="0.01" min="0" max="10" value={form.cgpa} onChange={(e) => setForm({ ...form, cgpa: e.target.value })} className="input" />
+                  ? <input type="number" step="0.01" min="0" max="10" value={form.cgpa} onChange={(e) => setForm({ ...form, cgpa: e.target.value })} className="input" placeholder="e.g. 8.5" />
                   : <p className="text-sm text-slate-700 dark:text-slate-300">{profile?.cgpa ?? 'Not set'}</p>
+                }
+              </div>
+              <div>
+                <label className="label">Percentage (%)</label>
+                {editing
+                  ? <input type="number" step="0.01" min="0" max="100" value={form.percentage} onChange={(e) => setForm({ ...form, percentage: e.target.value })} className="input" placeholder="e.g. 82.5" />
+                  : <p className="text-sm text-slate-700 dark:text-slate-300">
+                      {profile?.percentage != null ? `${profile.percentage}%` : 'Not set'}
+                    </p>
                 }
               </div>
               <div>
                 <label className="label">Active Backlogs</label>
                 {editing
-                  ? <input type="number" min="0" value={form.backlogs} onChange={(e) => setForm({ ...form, backlogs: e.target.value })} className="input" />
+                  ? (
+                    <>
+                      <input
+                        type="number" min="0" max="14" step="1"
+                        value={form.backlogs}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          // Allow empty string while typing; clamp on blur
+                          setForm({ ...form, backlogs: v });
+                        }}
+                        onBlur={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (isNaN(v) || v < 0) setForm({ ...form, backlogs: 0 });
+                          else if (v > 14) setForm({ ...form, backlogs: 14 });
+                        }}
+                        className="input"
+                        placeholder="0–14"
+                      />
+                      {(parseInt(form.backlogs, 10) > 14 || parseInt(form.backlogs, 10) < 0) && (
+                        <p className="form-error mt-1">Backlogs must be between 0 and 14.</p>
+                      )}
+                    </>
+                  )
                   : <p className="text-sm text-slate-700 dark:text-slate-300">{profile?.backlogs ?? 'Not set'}</p>
                 }
               </div>

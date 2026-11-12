@@ -23,6 +23,29 @@ export const updateMyProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id);
 
+    // ── Backend validation for student academic fields ───────────────────
+    if (user.role === 'student') {
+      const { backlogs, percentage, cgpa } = req.body;
+      if (backlogs !== undefined) {
+        const b = Number(backlogs);
+        if (!Number.isInteger(b) || b < 0 || b > 14) {
+          return res.status(400).json({ message: 'Active Backlogs must be a whole number between 0 and 14.' });
+        }
+      }
+      if (percentage !== undefined && percentage !== '') {
+        const p = Number(percentage);
+        if (isNaN(p) || p < 0 || p > 100) {
+          return res.status(400).json({ message: 'Percentage must be between 0 and 100.' });
+        }
+      }
+      if (cgpa !== undefined && cgpa !== '') {
+        const c = Number(cgpa);
+        if (isNaN(c) || c < 0 || c > 10) {
+          return res.status(400).json({ message: 'CGPA must be between 0 and 10.' });
+        }
+      }
+    }
+
     // Update user fields
     const userFields = ['name', 'avatar', 'themePreference'];
     userFields.forEach((field) => {
