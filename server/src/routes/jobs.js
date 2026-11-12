@@ -2,8 +2,8 @@ import { Router } from 'express';
 import {
   createJob, getJobs, getJob, reviewJob, getPendingJobs,
   deleteJob, updateJob, saveJob, unsaveJob, getSavedJobs,
-  applyToJob, getMyApplications, getJobApplications,
-  updateApplicationStatus, getMyJobSubmissions,
+  applyToJob, confirmExternalApplication, getMyApplications,
+  getJobApplications, updateApplicationStatus, getMyJobSubmissions,
 } from '../controllers/jobController.js';
 import { downloadApplicationPDF } from '../controllers/applicationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
@@ -32,8 +32,10 @@ router.patch('/:id/review', authenticate, authorize('admin'), reviewJob);
 router.post('/:id/save', authenticate, authorize('student'), saveJob);
 router.delete('/:id/save', authenticate, authorize('student'), unsaveJob);
 
-// Apply
+// Apply (internal)
 router.post('/:id/apply', authenticate, authorize('student'), applyToJob);
+// Confirm external application (self-reported by student)
+router.post('/:id/confirm-external', authenticate, authorize('student'), confirmExternalApplication);
 router.get('/:id/applications', authenticate, authorize('admin'), getJobApplications);
 
 export default router;

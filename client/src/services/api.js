@@ -103,6 +103,7 @@ export const jobsApi = {
   unsaveJob: (id) => api.delete(`/jobs/${id}/save`),
   getSavedJobs: () => api.get('/jobs/saved'),
   applyToJob: (id, data) => api.post(`/jobs/${id}/apply`, data),
+  confirmExternalApplication: (id) => api.post(`/jobs/${id}/confirm-external`),
   getMyApplications: () => api.get('/jobs/my-applications'),
   getJobApplications: (id, params) => api.get(`/jobs/${id}/applications`, { params }),
   updateApplicationStatus: (id, data) => api.patch(`/jobs/applications/${id}/status`, data),

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import {
 import { jobsApi, getErrorMessage } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { LoadingSpinner, EmptyState, StatusBadge } from '../../components/ui';
+import ExternalApplyConfirmModal from '../../components/ExternalApplyConfirmModal';
 import { formatDate } from '../../utils/helpers';
 
 export default function JobDetailPage({ adminView = false }) {
@@ -21,11 +22,44 @@ export default function JobDetailPage({ adminView = false }) {
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
 
+  // ── External apply confirmation state ─────────────────────────────────────
+  // pendingConfirm: true when student has opened the external tab and we
+  // are waiting for them to return and answer the confirmation popup.
+  const [pendingConfirm, setPendingConfirm] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  // Track whether we have already attached the visibilitychange listener
+  // so we don't fire the popup multiple times.
+  const confirmListenerAttached = useRef(false);
+
   useEffect(() => {
     jobsApi.getJob(id)
-      .then((res) => setData(res.data))
+      .then((res) => {
+        setData(res.data);
+        // If backend returns myApplication (future-proof), show Applied
+        if (res.data.myApplication) setApplied(true);
+      })
       .catch(() => toast.error('Job not found.'))
       .finally(() => setLoading(false));
+
+    // Check if student already applied to this job via getMyApplications
+    if (user?.role === 'student') {
+      jobsApi.getMyApplications()
+        .then((r) => {
+          const alreadyApplied = r.data.applications?.some(
+            (a) => a.job?._id === id || a.job === id
+          );
+          if (alreadyApplied) setApplied(true);
+        })
+        .catch(() => {}); // silent — not critical
+    }
+  }, [id]);
+
+  // Cleanup visibility listener on unmount / job change
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      confirmListenerAttached.current = false;
+    };
   }, [id]);
 
   const handleApply = async () => {
@@ -39,6 +73,49 @@ export default function JobDetailPage({ adminView = false }) {
     } finally {
       setApplying(false);
     }
+  };
+
+  // Called once when the student returns to the GradLink tab
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      confirmListenerAttached.current = false;
+      setPendingConfirm(true);
+    }
+  }
+
+  // Open the external URL and start listening for tab-return
+  const handleExternalApplyClick = (externalUrl) => {
+    if (applied) return; // already confirmed — no second popup
+    // Open external site in new tab
+    window.open(externalUrl, '_blank', 'noopener,noreferrer');
+    // Attach the visibility listener only once
+    if (!confirmListenerAttached.current) {
+      confirmListenerAttached.current = true;
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+  };
+
+  // Student clicked "Yes, Applied"
+  const handleConfirmYes = async () => {
+    setConfirming(true);
+    try {
+      await jobsApi.confirmExternalApplication(id);
+      setApplied(true);
+      setPendingConfirm(false);
+      toast.success('Application confirmed and recorded in GradLink!');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+      setPendingConfirm(false);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  // Student clicked "No, Not Yet"
+  const handleConfirmNo = () => {
+    setPendingConfirm(false);
+    toast.info('No problem. You can apply again when ready.');
   };
 
   if (loading) return <div className="flex justify-center py-20"><LoadingSpinner size="lg" /></div>;
@@ -107,13 +184,25 @@ export default function JobDetailPage({ adminView = false }) {
           <>
             {job.applicationMethod === 'external' && job.externalUrl && (
               <div>
-                <a href={job.externalUrl} target="_blank" rel="noopener noreferrer" className="btn-primary">
-                  <ExternalLink className="h-4 w-4" /> Apply on External Site
-                </a>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 ml-0.5">You will be redirected to an external website outside GradLink.</p>
+                {applied ? (
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm font-medium">
+                    <CheckCircle className="h-4 w-4" /> Applied (Externally Confirmed)
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleExternalApplyClick(job.externalUrl)}
+                      className="btn-primary"
+                    >
+                      <ExternalLink className="h-4 w-4" /> Apply on External Site
+                    </button>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 ml-0.5">
+                      You will be redirected to an external website. Return here to confirm your application.
+                    </p>
+                  </>
+                )}
               </div>
             )}
-            {applied && <div className="badge-green text-sm px-3 py-2 rounded-lg"><CheckCircle className="h-4 w-4 inline mr-1" />Application submitted!</div>}
           </>
         )}
       </motion.div>
@@ -200,6 +289,18 @@ export default function JobDetailPage({ adminView = false }) {
             {applying ? <LoadingSpinner size="sm" /> : <><Send className="h-4 w-4" /> Submit Application</>}
           </button>
         </div>
+      )}
+
+      {/* External application confirmation modal */}
+      {user?.role === 'student' && (
+        <ExternalApplyConfirmModal
+          open={pendingConfirm}
+          jobTitle={job?.title}
+          company={job?.company}
+          confirming={confirming}
+          onConfirm={handleConfirmYes}
+          onDecline={handleConfirmNo}
+        />
       )}
     </div>
   );

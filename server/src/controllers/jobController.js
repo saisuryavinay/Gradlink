@@ -285,6 +285,57 @@ export const applyToJob = async (req, res, next) => {
   }
 };
 
+// POST /api/jobs/:id/confirm-external
+// Student self-confirms they completed an external application.
+// Creates a JobApplication record with status 'submitted'.
+// Idempotent: returns 200 if already confirmed (no duplicate created).
+export const confirmExternalApplication = async (req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ message: 'Job not found.' });
+    if (job.status !== 'approved') return res.status(400).json({ message: 'This job is not available.' });
+    if (job.applicationMethod !== 'external') {
+      return res.status(400).json({ message: 'This endpoint is only for external application jobs.' });
+    }
+
+    // Check if already confirmed — return early instead of creating a duplicate
+    const existing = await JobApplication.findOne({
+      student: req.user._id,
+      job: req.params.id,
+    });
+    if (existing) {
+      return res.status(200).json({
+        message: 'You have already confirmed this application.',
+        application: existing,
+        alreadyApplied: true,
+      });
+    }
+
+    const application = await JobApplication.create({
+      student: req.user._id,
+      job: req.params.id,
+      status: 'submitted',
+      formData: {},
+    });
+
+    res.status(201).json({
+      message: 'External application confirmed and recorded.',
+      application,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      // Race condition: duplicate key — fetch and return existing record
+      const existing = await JobApplication.findOne({ student: req.user._id, job: req.params.id });
+      return res.status(200).json({
+        message: 'Application already confirmed.',
+        application: existing,
+        alreadyApplied: true,
+      });
+    }
+    next(error);
+  }
+};
+
 export const getMyApplications = async (req, res, next) => {
   try {
     const apps = await JobApplication.find({ student: req.user._id })
