@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { profileApi, getErrorMessage } from '../../services/api';
 import { LoadingSpinner } from '../../components/ui';
 import Avatar from '../../components/Avatar';
+import SkillsInput from '../../components/SkillsInput';
 import { User, Building2, Briefcase, BookOpen, Code, Linkedin, Github, Globe, Edit2, Save, X } from 'lucide-react';
 import { DEPARTMENTS, GRADUATION_YEARS } from '../../utils/helpers';
 import { motion } from 'framer-motion';
@@ -15,7 +16,6 @@ export default function MyProfilePage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({});
-  const [skillInput, setSkillInput] = useState('');
 
   useEffect(() => {
     profileApi.getMyProfile()
@@ -67,13 +67,6 @@ export default function MyProfilePage() {
     }
   };
 
-  const addSkill = () => {
-    const s = skillInput.trim();
-    if (s && !form.skills?.includes(s)) {
-      setForm({ ...form, skills: [...(form.skills || []), s] });
-      setSkillInput('');
-    }
-  };
 
   if (loading) return <div className="flex justify-center py-20"><LoadingSpinner size="lg" /></div>;
 
@@ -182,19 +175,10 @@ export default function MyProfilePage() {
       <div className="card p-5">
         <h3 className="section-title mb-3"><Code className="h-4 w-4 inline mr-1" />Skills</h3>
         {editing ? (
-          <>
-            <div className="flex gap-2 mb-2">
-              <input value={skillInput} onChange={(e) => setSkillInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSkill(); }}} className="input flex-1" placeholder="Add skill…" />
-              <button type="button" onClick={addSkill} className="btn-secondary">Add</button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(form.skills || []).map((s) => (
-                <span key={s} className="badge-blue flex items-center gap-1">
-                  {s} <button onClick={() => setForm({ ...form, skills: form.skills.filter((x) => x !== s) })} className="hover:text-red-500">×</button>
-                </span>
-              ))}
-            </div>
-          </>
+          <SkillsInput
+            skills={form.skills || []}
+            onChange={(updated) => setForm({ ...form, skills: updated })}
+          />
         ) : (
           <div className="flex flex-wrap gap-2">
             {/* Students: skills stored in StudentProfile; Alumni: skills stored on User */}
